@@ -1,91 +1,119 @@
-import sqlite3
+import aiosqlite
+import json
 import logging
 
-DATABASE_NAME = "quotes.db"
+DATABASE_NAME = "bot.db"
 
-def create_db_connection():
-    conn = sqlite3.connect(DATABASE_NAME)
-    return conn
+# Настройка логирования
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def create_tables():
-    conn = create_db_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            scheduled_time TEXT
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS quotes (
-            quote_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            text TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def get_quotes():
-    conn = create_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT text FROM quotes")
-    quotes = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return quotes
-
-def add_quote(quote):
-    conn = create_db_connection()
-    cursor = conn.cursor()
+async def create_db():
     try:
-        cursor.execute("INSERT INTO quotes (text) VALUES (?)", (quote,))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        logging.error(f"Error adding quote: {e}")
-        return False
-    finally:
-        conn.close()
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        start_time TEXT,
+                        end_time TEXT,
+                        quotes TEXT DEFAULT '[]'
+                    )
+                """)
+            await conn.commit()
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при создании базы данных: {e}")
 
-def add_quote_from_file(file_path):
-    conn = create_db_connection()
-    cursor = conn.cursor()
+
+async def set_time_interval(user_id, start_time, end_time):
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            quotes = [line.strip() for line in f if line.strip()]
-            cursor.executemany("INSERT INTO quotes (text) VALUES (?)", [(quote,) for quote in quotes])
-            conn.commit()
-        return True
-    except FileNotFoundError:
-        logging.error(f"File not found: {file_path}")
-        return False
-    except sqlite3.Error as e:
-        logging.error(f"Error adding quotes from file: {e}")
-        return False
-    finally:
-        conn.close()
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    UPDATE users
+                    SET start_time = ?, end_time = ?
+                    WHERE user_id = ?
+                """, (start_time, end_time, user_id))
 
-def get_scheduled_time(user_id):
-  conn = create_db_connection()
-  cursor = conn.cursor()
-  cursor.execute("SELECT scheduled_time FROM users WHERE user_id = ?", (user_id,))
-  result = cursor.fetchone()
-  conn.close()
-  if result:
-    return result[0]
-  else:
-    return None
+                if cursor.rowcount == 0:
+                    await cursor.execute("""
+                        INSERT INTO users (user_id, start_time, end_time, quotes)
+                        VALUES (?, ?, ?, '[]')
+                    """, (user_id, start_time, end_time))
 
-def set_scheduled_time(user_id, time_str):
-    conn = create_db_connection()
-    cursor = conn.cursor()
+            await conn.commit()
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при установке временного интервала для user_id {user_id}: {e}")
+
+
+async def get_time_interval(user_id):
     try:
-        cursor.execute("INSERT OR REPLACE INTO users (user_id, scheduled_time) VALUES (?, ?)", (user_id, time_str))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        logging.error(f"Error setting schedule time: {e}")
-        return False
-    finally:
-        conn.close()
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT start_time, end_time FROM users WHERE user_id = ?", (user_id,))
+                result = await cursor.fetchone()
+                return result
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при получении временного интервала для user_id {user_id}: {e}")
+        return None
+
+
+async def get_user_quotes(user_id):
+    try:
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT quotes FROM users WHERE user_id = ?", (user_id,))
+                result = await cursor.fetchone()
+                if result:
+                    return json.loads(result[0])  # Преобразуем JSON в список
+                return []
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при получении цитат для user_id {user_id}: {e}")
+        return []
+    except json.JSONDecodeError as e:
+        logging.error(f"Ошибка при декодировании JSON для user_id {user_id}: {e}")
+        return []
+
+
+async def set_user_quotes(user_id, quotes):
+    try:
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                quotes_json = json.dumps(quotes)  # Преобразуем список в JSON
+                await cursor.execute("UPDATE users SET quotes = ? WHERE user_id = ?", (quotes_json, user_id))
+            await conn.commit()
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при установке принципов для user_id {user_id}: {e}")
+
+
+async def clear_user_quotes(user_id):
+    """Удаляет все цитаты для указанного user_id, заменяя их на пустой список."""
+    try:
+        async with aiosqlite.connect(DATABASE_NAME) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("UPDATE users SET quotes = '[]' WHERE user_id = ?", (user_id,))
+            await conn.commit()
+    except aiosqlite.Error as e:
+        logging.error(f"Ошибка при очистке цитат для user_id {user_id}: {e}")
+
+
+async def main():
+    # Пример использования
+    await create_db()
+    user_id = 12345
+    await set_time_interval(user_id, "08:00", "20:00")
+    time_interval = await get_time_interval(user_id)
+    print(f"Временной интервал для user_id {user_id}: {time_interval}")
+
+    quotes = ["Будьте лучшей версией себя!", "Не сдавайтесь!"]
+    await set_user_quotes(user_id, quotes)
+    user_quotes = await get_user_quotes(user_id)
+    print(f"Цитаты для user_id {user_id}: {user_quotes}")
+
+    await clear_user_quotes(user_id)
+    updated_quotes = await get_user_quotes(user_id)
+    print(f"Цитаты после очистки для user_id {user_id}: {updated_quotes}")
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
