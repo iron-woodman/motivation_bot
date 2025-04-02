@@ -5,8 +5,7 @@ import logging
 DATABASE_NAME = "bot.db"
 
 # Настройка логирования
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
-
+logging.basicConfig(filename='bot.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 async def create_db():
     try:

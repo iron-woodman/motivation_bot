@@ -8,7 +8,8 @@ import datetime
 import aiosqlite  # Import aiosqlite
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.basicConfig(filename='bot.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 scheduler = AsyncIOScheduler()
 tasks = []  # Список для хранения всех запущенных задач

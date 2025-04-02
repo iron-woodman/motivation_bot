@@ -16,6 +16,10 @@ from aiogram.enums import ParseMode
 # Global flag to indicate shutdown
 shutdown_flag = False
 
+logging.basicConfig(filename='bot.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 async def main():
     global shutdown_flag
     load_dotenv()

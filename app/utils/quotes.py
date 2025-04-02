@@ -3,7 +3,7 @@ from app.database import database
 import logging
 
 # Настройка логирования
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='bot.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 async def get_random_quote(user_id):
     quotes = await database.get_user_quotes(user_id)
